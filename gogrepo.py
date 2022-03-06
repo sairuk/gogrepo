@@ -369,7 +369,7 @@ def fetch_file_info(d, fetch_md5):
                         else:
                             shelf_etree = xml.etree.ElementTree.parse(page).getroot()
                         d.md5 = shelf_etree.attrib['md5']
-                        info('successfully found md5 %s' % d.md5)
+                        info('successfully found md5 %s for %s' % (d.md5, d.name))
                 except HTTPError as e:
                     if e.code == 404:
                         warn("no md5 data found for {}".format(d.name))
