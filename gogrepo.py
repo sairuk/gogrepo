@@ -28,6 +28,7 @@ import io
 import datetime
 import shutil
 import socket
+import gzip
 import xml.etree.ElementTree
 
 # python 2 / 3 imports
@@ -38,7 +39,7 @@ try:
     from httplib import BadStatusLine
     from urlparse import urlparse
     from urllib import urlencode, unquote
-    from urllib2 import HTTPError, URLError, HTTPCookieProcessor, build_opener, Request
+    from urllib2 import HTTPError, URLError, HTTPCookieProcessor, build_opener, install_opener, urlopen, Request
     from itertools import izip_longest as zip_longest
     from StringIO import StringIO
 except ImportError:
@@ -47,7 +48,7 @@ except ImportError:
     import http.cookiejar as cookiejar
     from http.client import BadStatusLine
     from urllib.parse import urlparse, urlencode, unquote
-    from urllib.request import HTTPCookieProcessor, HTTPError, URLError, build_opener, Request
+    from urllib.request import HTTPCookieProcessor, HTTPError, URLError, build_opener, install_opener, urlopen, Request
     from itertools import zip_longest
     from io import StringIO
 
@@ -158,6 +159,9 @@ def request(url, args=None, byte_range=None, retries=HTTP_RETRY_COUNT, delay=HTT
     _retry = False
     time.sleep(delay)
 
+    install_opener(opener)
+    page = None
+
     try:
         if args is not None:
             enc_args = urlencode(args)
@@ -167,7 +171,7 @@ def request(url, args=None, byte_range=None, retries=HTTP_RETRY_COUNT, delay=HTT
         req = Request(url, data=enc_args)
         if byte_range is not None:
             req.add_header('Range', 'bytes=%d-%d' % byte_range)
-        page = opener.open(req)
+        page = urlopen(req)
     except (HTTPError, URLError, socket.error, BadStatusLine) as e:
         if isinstance(e, HTTPError):
             if e.code in HTTP_PERM_ERRORCODES:  # do not retry these HTTP codes
@@ -360,8 +364,12 @@ def fetch_file_info(d, fetch_md5):
                 tmp_md5_url = "%s.xml" %page.geturl()
                 try:
                     with request(tmp_md5_url) as page:
-                        shelf_etree = xml.etree.ElementTree.parse(page).getroot()
+                        if page.getheader('Content-Encoding') == 'gzip':
+                            shelf_etree = xml.etree.ElementTree.fromstring(gzip.decompress(page.read()))
+                        else:
+                            shelf_etree = xml.etree.ElementTree.parse(page).getroot()
                         d.md5 = shelf_etree.attrib['md5']
+                        info('successfully found md5 %s' % d.md5)
                 except HTTPError as e:
                     if e.code == 404:
                         warn("no md5 data found for {}".format(d.name))
