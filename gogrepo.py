@@ -364,7 +364,7 @@ def fetch_file_info(d, fetch_md5):
                 tmp_md5_url = "%s.xml" %page.geturl()
                 try:
                     with request(tmp_md5_url) as page:
-                        if page.getheader('Content-Encoding') == 'gzip':
+                        if page.headers.get('Content-Encoding') == 'gzip':
                             shelf_etree = xml.etree.ElementTree.fromstring(gzip.decompress(page.read()))
                         else:
                             shelf_etree = xml.etree.ElementTree.parse(page).getroot()
