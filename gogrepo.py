@@ -365,7 +365,9 @@ def fetch_file_info(d, fetch_md5):
                 try:
                     with request(tmp_md5_url) as page:
                         if page.headers.get('Content-Encoding') == 'gzip':
-                            shelf_etree = xml.etree.ElementTree.fromstring(gzip.decompress(page.read()))
+                            buf = StringIO(page.read())
+                            f = gzip.GzipFile(fileobj=buf)
+                            shelf_etree = xml.etree.ElementTree.fromstring(f.read())
                         else:
                             shelf_etree = xml.etree.ElementTree.parse(page).getroot()
                         d.md5 = shelf_etree.attrib['md5']
