@@ -30,13 +30,14 @@ import shutil
 import socket
 import gzip
 import xml.etree.ElementTree
+import re
 
 # python 2 / 3 imports
 try:
     # python 2
     from Queue import Queue
     import cookielib as cookiejar
-    from httplib import BadStatusLine
+    from httplib import BadStatusLine, IncompleteRead
     from urlparse import urlparse
     from urllib import urlencode, unquote
     from urllib2 import HTTPError, URLError, HTTPCookieProcessor, build_opener, install_opener, urlopen, Request
@@ -46,7 +47,7 @@ except ImportError:
     # python 3
     from queue import Queue
     import http.cookiejar as cookiejar
-    from http.client import BadStatusLine
+    from http.client import BadStatusLine, IncompleteRead
     from urllib.parse import urlparse, urlencode, unquote
     from urllib.request import HTTPCookieProcessor, HTTPError, URLError, build_opener, install_opener, urlopen, Request
     from itertools import zip_longest
@@ -109,6 +110,7 @@ HTTP_RETRY_DELAY = 5   # in seconds
 HTTP_RETRY_COUNT = 3
 HTTP_GAME_DOWNLOADER_THREADS = 4
 HTTP_PERM_ERRORCODES = (404, 403, 503)
+HTTP_MD5_RETRY_COUNT = 10
 
 # Save manifest data for these os and lang combinations
 DEFAULT_OS_LIST = ['windows']
@@ -171,7 +173,7 @@ def request(url, args=None, byte_range=None, retries=HTTP_RETRY_COUNT, delay=HTT
         req = Request(url, data=enc_args)
         if byte_range is not None:
             req.add_header('Range', 'bytes=%d-%d' % byte_range)
-        page = urlopen(req)
+        page = urlopen(req, timeout=30)
     except (HTTPError, URLError, socket.error, BadStatusLine) as e:
         if isinstance(e, HTTPError):
             if e.code in HTTP_PERM_ERRORCODES:  # do not retry these HTTP codes
@@ -362,23 +364,36 @@ def fetch_file_info(d, fetch_md5):
         if fetch_md5:
             if os.path.splitext(page.geturl())[1].lower() not in SKIP_MD5_FILE_EXT:
                 tmp_md5_url = "%s.xml" %page.geturl()
-                try:
-                    with request(tmp_md5_url) as page:
-                        if page.headers.get('Content-Encoding') == 'gzip':
-                            buf = StringIO(page.read())
-                            f = gzip.GzipFile(fileobj=buf)
-                            shelf_etree = xml.etree.ElementTree.fromstring(f.read())
+                for i in range(HTTP_MD5_RETRY_COUNT):
+                    try:
+                        urls = [tmp_md5_url, re.sub(r"^https", "http", tmp_md5_url), tmp_md5_url.replace('%28', '(').replace('%29', ')')]
+                        for url in urls:
+                            with request(url) as page:
+                                try:
+                                    body = page.read()
+                                except IncompleteRead as e:
+                                    continue
+
+                                try:
+                                    shelf_etree = xml.etree.ElementTree.fromstring(gzip.decompress(body))
+                                except gzip.BadGzipFile:
+                                    shelf_etree = xml.etree.ElementTree.fromstring(body)
+
+                                d.md5 = shelf_etree.attrib['md5']
+                                info('successfully found md5 %s for %s' % (d.md5, d.name))
+                                return
+
+                    except HTTPError as e:
+                        if e.code == 404:
+                            warn("no md5 data found for {}".format(d.name))
                         else:
-                            shelf_etree = xml.etree.ElementTree.parse(page).getroot()
-                        d.md5 = shelf_etree.attrib['md5']
-                        info('successfully found md5 %s for %s' % (d.md5, d.name))
-                except HTTPError as e:
-                    if e.code == 404:
-                        warn("no md5 data found for {}".format(d.name))
-                    else:
-                        raise
-                except xml.etree.ElementTree.ParseError:
-                    warn('xml parsing error occurred trying to get md5 data for {}'.format(d.name))
+                            raise
+                    except xml.etree.ElementTree.ParseError:
+                        if i == HTTP_MD5_RETRY_COUNT:
+                            warn('xml parsing error occurred trying to get md5 data for {}, giving up'.format(d.name))
+                        else:
+                            warn('xml parsing error occurred trying to get md5 data for {}, retrying...'.format(d.name))
+                            time.sleep(HTTP_RETRY_DELAY)
 
 
 def filter_downloads(out_list, downloads_list, lang_list, os_list):
