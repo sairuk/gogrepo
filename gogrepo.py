@@ -578,7 +578,8 @@ def cmd_login(user, passwd):
         # Bail if we find a request for a reCAPTCHA
         if len(etree.findall('.//div[@class="g-recaptcha form__recaptcha"]')) > 0:
             error("cannot continue, gog is asking for a reCAPTCHA :(  try again in a few minutes.")
-            return
+            info("we'll continue for now, recaptcha detection is broken, see eddie3/gogrepo#65")
+            #return
         for elm in etree.findall('.//input'):
             if elm.attrib['id'] == 'login__token':
                 login_data['login_token'] = elm.attrib['value']
