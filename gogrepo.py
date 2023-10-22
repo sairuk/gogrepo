@@ -260,7 +260,7 @@ def load_cookies():
 def load_manifest(filepath=MANIFEST_FILENAME):
     info('loading local manifest...')
     try:
-        with codecs.open(MANIFEST_FILENAME, 'rU', 'utf-8') as r:
+        with codecs.open(MANIFEST_FILENAME, 'r', 'utf-8') as r:
             ad = r.read().replace('{', 'AttrDict(**{').replace('}', '})')
         return eval(ad)
     except IOError:
