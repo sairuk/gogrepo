@@ -33,8 +33,7 @@ import xml.etree.ElementTree
 import re
 
 # python 2 / 3 imports
-try:
-    # python 2
+if sys.version_info <= (3,0,0):
     from Queue import Queue
     import cookielib as cookiejar
     from httplib import BadStatusLine, IncompleteRead
@@ -43,7 +42,7 @@ try:
     from urllib2 import HTTPError, URLError, HTTPCookieProcessor, build_opener, install_opener, urlopen, Request
     from itertools import izip_longest as zip_longest
     from StringIO import StringIO
-except ImportError:
+elif sys.version_info >= (3,0,0):
     # python 3
     from queue import Queue
     import http.cookiejar as cookiejar
@@ -64,7 +63,11 @@ except ImportError:
     def html2text(x): return x
 
 # lib mods
-cookiejar.MozillaCookieJar.magic_re = r'.*'  # bypass the hardcoded "Netscape HTTP Cookie File" check
+if sys.version_info <= (3,0,0):
+    cookiejar.MozillaCookieJar.magic_re = r'.*'     # bypass the hardcoded "Netscape HTTP Cookie File" check
+                                                    # this breaks netscane import on python3, going to assume
+                                                    # it was a py2 fix
+
 
 # configure logging
 logFormatter = logging.Formatter("%(asctime)s | %(message)s", datefmt='%H:%M:%S')
@@ -84,6 +87,7 @@ log_exception = rootLogger.exception
 # filepath constants
 GAME_STORAGE_DIR = r'.'
 COOKIES_FILENAME = r'gog-cookies.dat'
+COOKIES_EXPORT = r'cookies-gog-com.txt'
 MANIFEST_FILENAME = r'gog-manifest.dat'
 SERIAL_FILENAME = r'!serial.txt'
 INFO_FILENAME = r'!info.txt'
@@ -244,7 +248,11 @@ def load_cookies():
 
     # try to import as mozilla 'cookies.txt' format
     try:
-        tmp_jar = cookiejar.MozillaCookieJar(global_cookies.filename)
+        if os.path.exists(COOKIES_EXPORT):
+            cookie_import = COOKIES_EXPORT
+        else:
+            cookie_import = global_cookies.filename
+        tmp_jar = cookiejar.MozillaCookieJar(cookie_import)
         tmp_jar.load()
         for c in tmp_jar:
             global_cookies.set_cookie(c)
